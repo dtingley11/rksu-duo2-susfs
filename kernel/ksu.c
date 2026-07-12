@@ -30,6 +30,9 @@
 #include "feature/kernel_umount.h"
 #include "feature/sucompat.h"
 #include "feature/sulog.h"
+#ifdef CONFIG_KSU_SUSFS
+#include "feature/susfs.h"
+#endif
 #include "runtime/ksud.h"
 #include "sulog/event.h"
 #include "sulog/fd.h"
@@ -69,6 +72,9 @@
 #include "feature/kernel_umount.c"
 #include "feature/sucompat.c"
 #include "feature/sulog.c"
+#ifdef CONFIG_KSU_SUSFS
+#include "feature/susfs.c"
+#endif
 #include "runtime/ksud.c"
 
 #include "sulog/event.c"
@@ -107,6 +113,10 @@ int __init kernelsu_init(void)
     if (!ksu_cred) {
         pr_err("prepare cred failed!\n");
     }
+
+#ifdef CONFIG_KSU_SUSFS
+    ksu_susfs_init();
+#endif
 
     ksu_feature_init();
 

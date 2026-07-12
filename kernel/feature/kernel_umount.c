@@ -1,3 +1,7 @@
+#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
+#include <linux/susfs.h>
+#endif
+
 static bool ksu_kernel_umount_enabled = true;
 
 static int kernel_umount_feature_get(u64 *value)
@@ -31,7 +35,13 @@ static void ksu_umount_mnt(const char *mnt, struct path *path, int flags)
     }
 }
 
-static void try_umount(const char *mnt, int flags)
+#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
+extern bool susfs_is_mnt_devname_ksu(struct path *path);
+
+void ksu_try_umount(const char *mnt, bool check_mnt, int flags, uid_t uid)
+#else
+static void ksu_try_umount(const char *mnt, int flags)
+#endif
 {
     struct path path;
     int err = kern_path(mnt, 0, &path);
@@ -45,8 +55,33 @@ static void try_umount(const char *mnt, int flags)
         return;
     }
 
+#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
+    if (check_mnt && !susfs_is_mnt_devname_ksu(&path)) {
+        path_put(&path);
+        return;
+    }
+#ifdef CONFIG_KSU_SUSFS_ENABLE_LOG
+    pr_info("susfs: umounting %s for uid %u\n", mnt, uid);
+#endif
+#endif
+
     ksu_umount_mnt(mnt, &path, flags);
 }
+
+#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
+void susfs_try_umount_all(uid_t uid)
+{
+    struct mount_entry *entry;
+
+    susfs_try_umount(uid);
+
+    down_read(&mount_list_lock);
+    list_for_each_entry (entry, &mount_list, list) {
+        ksu_try_umount(entry->umountable, false, entry->flags, uid);
+    }
+    up_read(&mount_list_lock);
+}
+#endif
 
 struct umount_tw {
     struct callback_head cb;
@@ -71,22 +106,31 @@ int ksu_handle_umount(uid_t old_uid, uid_t new_uid)
     // 1. Normal app: zygote -> appuid
     // 2. Isolated process forked from zygote: zygote -> isolated_process
     // 3. App zygote forked from zygote: zygote -> appuid
-    // 4. Webview zygote forked from zygote: zygote -> WEBVIEW_ZYGOTE_UID (no need to handle, app cannot run custom code)
-    // 5. Isolated process forked from app zygote: appuid -> isolated_process (already handled by 3)
-    // 6. Isolated process forked from webview zygote (no need to handle, app cannot run custom code)
-    if (!is_appuid(new_uid) && !is_isolated_process(new_uid)) {
+    // 4. Webview zygote forked from zygote: zygote -> WEBVIEW_ZYGOTE_UID
+    // 5. Isolated process forked from app zygote: appuid -> isolated_process
+    // 6. Isolated process forked from webview zygote
+    bool is_zygote_child = is_zygote(current_cred());
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+    bool is_zygote_system_process =
+        is_zygote_child && new_uid >= 1000 && new_uid < FIRST_APPLICATION_UID &&
+        ksu_susfs_should_umount_zygote_system_process();
+#else
+    bool is_zygote_system_process = false;
+#endif
+
+    if (!is_appuid(new_uid) && !is_isolated_process(new_uid) &&
+        !is_zygote_system_process) {
         return 0;
     }
 
-    if (!ksu_uid_should_umount(new_uid) && !is_isolated_process(new_uid)) {
+    if (!is_zygote_system_process && !ksu_uid_should_umount(new_uid) &&
+        !is_isolated_process(new_uid)) {
         return 0;
     }
 
     // check old process's selinux context, if it is not zygote, ignore it!
     // because some su apps may setuid to untrusted_app but they are in global mount namespace
     // when we umount for such process, that is a disaster!
-    // also handle case 4 and 5
-    bool is_zygote_child = is_zygote(current_cred());
     if (!is_zygote_child) {
         pr_info("handle umount ignore non zygote child: %d\n", current->pid);
         return 0;
@@ -96,13 +140,17 @@ int ksu_handle_umount(uid_t old_uid, uid_t new_uid)
 
     const struct cred *saved = override_creds(ksu_cred);
 
+#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
+    susfs_try_umount_all(new_uid);
+#else
     struct mount_entry *entry;
     down_read(&mount_list_lock);
     list_for_each_entry (entry, &mount_list, list) {
         pr_info("%s: unmounting: %s flags: 0x%x\n", __func__, entry->umountable, entry->flags);
-        try_umount(entry->umountable, entry->flags);
+        ksu_try_umount(entry->umountable, entry->flags);
     }
     up_read(&mount_list_lock);
+#endif
 
     revert_creds(saved);
 

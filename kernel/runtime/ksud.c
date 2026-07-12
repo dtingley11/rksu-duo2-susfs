@@ -43,6 +43,10 @@ void on_post_fs_data(void)
     done = true;
     pr_info("on_post_fs_data!\n");
 
+#ifdef CONFIG_KSU_SUSFS
+    ksu_susfs_on_post_fs_data();
+#endif
+
     ksu_load_allow_list();
     ksu_observer_init();
 

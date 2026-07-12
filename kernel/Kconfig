@@ -29,4 +29,100 @@ config KSU_DEBUG
 	help
 	  Enable KernelSU debug mode.
 
+
+menu "KernelSU - SUSFS"
+
+config KSU_SUSFS
+	bool "KernelSU addon - SUSFS"
+	depends on KSU
+	default y
+	help
+	  Enable the SUSFS v1.5.5 kernel integration.
+
+config KSU_SUSFS_HAS_MAGIC_MOUNT
+	bool "KernelSU uses the supported Magic Mount implementation"
+	depends on KSU_SUSFS && BROKEN
+	default n
+	help
+	  Disabled for this rksu 648e5988 port because its mount implementation
+	  has not been validated as the SUSFS Magic Mount variant.
+
+config KSU_SUSFS_SUS_PATH
+	bool "Hide suspicious paths"
+	depends on KSU_SUSFS
+	default n
+
+config KSU_SUSFS_SUS_MOUNT
+	bool "Hide suspicious mounts"
+	depends on KSU_SUSFS
+	default y
+
+config KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT
+	bool "Automatically hide KernelSU default mounts"
+	depends on KSU_SUSFS_SUS_MOUNT && KSU_SUSFS_HAS_MAGIC_MOUNT
+	default n
+
+config KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT
+	bool "Automatically hide suspicious bind mounts"
+	depends on KSU_SUSFS_SUS_MOUNT
+	default n
+
+config KSU_SUSFS_SUS_KSTAT
+	bool "Spoof suspicious kstat data"
+	depends on KSU_SUSFS
+	default y
+
+config KSU_SUSFS_SUS_OVERLAYFS
+	bool "Automatically spoof overlayfs stat data"
+	depends on KSU_SUSFS
+	default n
+
+config KSU_SUSFS_TRY_UMOUNT
+	bool "Enable SUSFS try_umount"
+	depends on KSU_SUSFS
+	default y
+
+config KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT
+	bool "Automatically add bind mounts to try_umount"
+	depends on KSU_SUSFS_TRY_UMOUNT
+	default n
+
+config KSU_SUSFS_SPOOF_UNAME
+	bool "Spoof uname"
+	depends on KSU_SUSFS
+	default y
+
+config KSU_SUSFS_ENABLE_LOG
+	bool "Enable SUSFS kernel logging"
+	depends on KSU_SUSFS
+	default y
+
+config KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
+	bool "Hide KernelSU and SUSFS symbols from kallsyms"
+	depends on KSU_SUSFS
+	default y
+
+config KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
+	bool "Spoof /proc/cmdline or /proc/bootconfig"
+	depends on KSU_SUSFS && BROKEN
+	default n
+	help
+	  Disabled because this Surface Duo 2 kernel has no fs/proc/bootconfig.c
+	  target matching the SUSFS 5.4 patch.
+
+config KSU_SUSFS_OPEN_REDIRECT
+	bool "Enable path open redirection"
+	depends on KSU_SUSFS
+	default y
+
+config KSU_SUSFS_SUS_SU
+	bool "Enable SUS-SU runtime hook switching"
+	depends on KSU_SUSFS && BROKEN
+	default n
+	help
+	  Disabled because rksu 648e5988 uses direct manual hooks and contains no
+	  KernelSU kprobe hook implementation for SUS-SU to switch.
+
+endmenu
+
 endmenu

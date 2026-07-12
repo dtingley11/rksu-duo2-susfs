@@ -26,6 +26,16 @@ static int ksu_task_fix_setuid(struct cred *new, const struct cred *old, int fla
     new_uid = new->uid.val;
     old_uid = old->uid.val;
 
+#ifdef CONFIG_KSU_SUSFS
+    if (is_zygote(old) &&
+        (is_appuid(new_uid) || is_isolated_process(new_uid)) &&
+        !ksu_is_allow_uid_for_current(new_uid)) {
+        task_lock(current);
+        current->susfs_task_state |= TASK_STRUCT_NON_ROOT_USER_APP_PROC;
+        task_unlock(current);
+    }
+#endif
+
     if (unlikely(is_uid_manager(new_uid))) {
         disable_seccomp();
         pr_info("install fd for manager: %d\n", new_uid);
@@ -48,7 +58,10 @@ static struct security_hook_list ksu_hooks[] = {
     defined(CONFIG_KSU_ALLOWLIST_WORKAROUND)
     LSM_HOOK_INIT(key_permission, ksu_key_permission),
 #endif
-    LSM_HOOK_INIT(task_fix_setuid, ksu_task_fix_setuid)
+    LSM_HOOK_INIT(task_fix_setuid, ksu_task_fix_setuid),
+#ifdef CONFIG_KSU_SUSFS
+    LSM_HOOK_INIT(task_prctl, ksu_susfs_handle_prctl),
+#endif
 };
 
 void __init ksu_lsm_hook_init(void)
